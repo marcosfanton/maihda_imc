@@ -4,7 +4,7 @@ library(PNSIBGE) # Extração de microdados PNS
 library(skimr)
 
 # Construção do banco de dados####
-# Seleção de variáveis ---- teste
+# Seleção de variáveis
 vars <- c(
   "P005", # gravidez (2 = NÃO)
   "C006", # sexo/gênero
@@ -66,14 +66,14 @@ pns19 <- raw_19 |>
       bmi >= 30 ~ 1,
       TRUE ~ 0), 
       levels = c(0, 1)))  |>  # variável estado nutricional (obesidade = sim/não)
-  select(age, gender, race, education, bmi, obesity) # seleção das variáveis
+  select(age, gender, income, race, bmi, obesity) # seleção das variáveis
 
 pns19 <- drop_na(pns19)
 
 # Criação de estratos sociais
 pns19 <- pns19  |> 
-  dplyr::mutate(strata = paste(gender, race, income, education, sep = "")) |> 
-  mutate(strata = factor(strata))
+  dplyr::mutate(stratum = paste(gender, race, income, sep = "")) |> 
+  mutate(stratum = factor(stratum))
 
 # Salvar banco
 write.csv(pns19, 
@@ -86,22 +86,64 @@ raw_19 <- read.csv("dados/raw_19.csv")
 # Análise - Tutorial: ####
 # IMC ####
 # Modelo 1A | Regressão linear com dois níveis com covariáveis#### 
-model1A <- lmer(bmi ~ (1|stratum), 
+modelo1A <- lmer(bmi ~ (1|stratum), 
                 data=pns19)
 
+# Predição 
+pns19$m1Am <- predict(modelo1A)
+
 # Modelo 1B | Regressão linear com dois níveis sem covariáveis#### 
-model1B <- lmer(bmi ~ gender + race + income + (1|stratum), 
+modelo1B <- lmer(bmi ~ gender + race + income + (1|stratum), 
                 data=pns19)
+
+# Predição
+mo1Bm <- predictInterval(modelo1B, 
+                         level=0.95, 
+                         include.resid.var=FALSE)
+mo1Bm <- mutate(mo1Bm, id=row_number())
+mo1Bu <- REsim(modelo1B)
 
 # OBESIDADE ####
 # Modelo 2A | Regressão logística com dois níveis com covariáveis#### 
-model2A <- glmer(obesity ~ (1|stratum), 
+modelo2A <- glmer(obesity ~ (1|stratum), 
                  data=pns19, 
                  family=binomial)
 
+# Odds ratio
+tab_model(modelo2A, show.se=T)
+
+# Preditores
+pns19$m2Axbu <- predict(modelo2A, type="response")
+pns19$m2Axb <- predict(modelo2A, type="response", re.form=NA)
+
+
+
 # Modelo 2B | Regressão logística com dois níveis com covariáveis#### 
-model2B <- glmer(obesity ~ gender + race + income +
+modelo2B <- glmer(obesity ~ gender + race + income +
                    (1|stratum), 
                  data=pns19, 
                  family=binomial)
+
+# Odds ratio
+tab_model(modelo2B, show.se=T)
+
+# Predição
+mo2Bm <- predictInterval(modelo2B, 
+                         level=0.95, 
+                         include.resid.var=FALSE)
+mo2Bm <- mutate(mo2Bm, id=row_number())
+
+pns19$m2BmF <- predict(modelo2B, re.form=NA)
+
+# Predição
+mo2Bm_prob <- predictInterval(modelo2B, 
+                              level=0.95, 
+                              include.resid.var=FALSE, 
+                             type="probability") 
+
+mo2Bm_prob <- mutate(mo2Bm_prob, id=row_number())
+
+pns19$mo2Bxb <- predict(modelo2B, re.form=NA, type="response")
+
+mo2Bu <- REsim(modelo2B)
 
