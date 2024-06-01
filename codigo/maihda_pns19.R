@@ -28,7 +28,7 @@ write.csv(raw_19,
           row.names = FALSE)
 
 # Carregar banco
-raw_19 <- read.csv("dados/raw_19.csv")
+raw_19 <- read.csv("dados/raw/raw_19.csv")
 
 # Construção de variáveis
 pns19 <- raw_19 |> 
@@ -146,4 +146,5 @@ mo2Bm_prob <- mutate(mo2Bm_prob, id=row_number())
 pns19$mo2Bxb <- predict(modelo2B, re.form=NA, type="response")
 
 mo2Bu <- REsim(modelo2B)
+
 
