@@ -123,10 +123,10 @@ m1Bm_tut <- predictInterval(model1B_tut, level=0.95, include.resid.var=FALSE)
 # creates a new dataframe for these predictions, with one row per stratum.
 
 # Create an identifier variable in the new dataframe, called "id"
-m1Bm <- mutate(m1Bm, id=row_number())
+m1Bm_tut <- mutate(m1Bm_tut, id=row_number())
 
 # predict the stratum random effects and associated SEs
-m1Bu <- REsim(model1B)
+m1Bu_tut <- REsim(model1B_tut)
 
 # Note that, unlike the Stata code, and as above this creates a separate 
 # dataframe with one line per stratum.
@@ -232,7 +232,7 @@ tut2 <- tut2 %>%
 # Collapse the data down to a stratum-level dataset 
 stratum_level <- aggregate(x=tut2[c("HbA1c", "diabetic")], 
                   by=tut2[c("sex", "race", "education", "income", "age",
-                  "stratum", "strataN", "m1Am", "m1Bmfit", "m1Bmupr", "m1Bmlwr",
+                  "stratum", "strataN", "m1Am_tut", "m1Bmfit", "m1Bmupr", "m1Bmlwr",
                   "m2Bmfit", "m2Bmupr", "m2Bmlwr", 
                   "m2BmfitL", "m2BmuprL", "m2BmlwrL",
                   "m2BmF")],
@@ -294,40 +294,40 @@ sd(stratum_level$m1Am)
 
 # Create a table that includes all model estimates, including the Variance 
 # Partitioning Coefficients (VPC)
-tab_model(model1A, model1B, model2A, model2B, p.style="stars")
+tab_model(model1A_tut, model1B_tut, model2A_tut, model2B_tut, p.style="stars")
 
 # Calculate the Proportional Change in Variance (PCV) (as a percentage) for 
 # models 1 and 2
 
 # first extract variance matrices from the model objects
-vc1a <-as.data.frame(VarCorr(model1A))
-vc1b <-as.data.frame(VarCorr(model1B))
-vc2a <-as.data.frame(VarCorr(model2A))
-vc2b <-as.data.frame(VarCorr(model2B))
+vc1a_tut <-as.data.frame(VarCorr(model1A_tut))
+vc1b_tut <-as.data.frame(VarCorr(model1B_tut))
+vc2a_tut <-as.data.frame(VarCorr(model2A_tut))
+vc2b_tut <-as.data.frame(VarCorr(model2B_tut))
 
 # calculate PCVs using components of these variance matrices (as percentages)
-PCV1 <- ((vc1a[1,4] - vc1b[1,4]) / vc1a[1,4])*100
-PCV1
-PCV2 <- ((vc2a[1,4] - vc2b[1,4]) / vc2a[1,4])*100
-PCV2
+PCV1_tut <- ((vc1a_tut[1,4] - vc1b_tut[1,4]) / vc1a_tut[1,4])*100
+PCV1_tut
+PCV2_tut <- ((vc2a_tut[1,4] - vc2b_tut[1,4]) / vc2a_tut[1,4])*100
+PCV2_tut
 
 # Calculate the area under the receiver operating characteristic (ROC) curve
 # for model 2a - based on intercept and stratum random effects
-AUC2A <- auc(tut2$diabetic, tut2$m2Axbu)
+AUC2A_tut <- auc(tut2$diabetic, tut2$m2Axbu)
 
 #for model 2A - based on only the fixed portion of the model
-AUC2AF <- auc(tut2$diabetic, tut2$m2Axb)
+AUC2AF_tut <- auc(tut2$diabetic, tut2$m2Axb)
 
 #for model 2b - based on intercept, main effects, and stratum random effects
-AUC2B <- auc(tut2$diabetic, tut2$m2Bmfit)
+AUC2B_tut <- auc(tut2$diabetic, tut2$m2Bmfit)
 #for model 2b - based on the fixed portion of the model (main effects)
-AUC2BF <- auc(tut2$diabetic, tut2$m2Bxb) 
+AUC2BF_tut <- auc(tut2$diabetic, tut2$m2Bxb) 
 
 #output the AUC calculations
-AUC2A
-AUC2AF
-AUC2B
-AUC2BF
+AUC2A_tut
+AUC2AF_tut
+AUC2B_tut
+AUC2BF_tut
 
 ############
 #Figure 1
@@ -361,7 +361,7 @@ ggplot(stratum_level, aes(x=HbA1c)) +
            53.8 mmol/mol")
 
 #PanelC  - histogram of the predicted stratum means
-ggplot(tut, aes(x=m1Am)) + 
+ggplot(tut, aes(x=m1Am_tut)) + 
   geom_histogram(aes(y = after_stat(count / sum(count))), binwidth=2, 
                  boundary=22) + 
   scale_y_continuous(labels=scales::percent) +

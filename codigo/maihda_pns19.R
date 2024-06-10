@@ -3,6 +3,9 @@ library(here)
 library(PNSIBGE) # Extração de microdados PNS
 library(skimr)
 library(lme4)
+library(ggeffects)
+library(merTools)
+
 
 # Construção do banco de dados####
 # Seleção de variáveis
@@ -32,7 +35,7 @@ write.csv(raw_19,
 raw_19 <- read.csv("dados/raw/raw_19.csv")
 
 # Construção de variáveis
-pns19 <- raw_19 |> 
+pns19 <- raw_19 |>
   dplyr::filter(C008 >= 18)  |>  # maiores de 18 anos
   dplyr::filter(C009 != "Ignorado")  |>  # exclusão de "Ignorados" da variável raça
   dplyr::filter(P00102 == "Sim" & P00402 == "Sim")  |>  # sabe o peso & a altura
@@ -40,11 +43,11 @@ pns19 <- raw_19 |>
   dplyr::mutate(
     age = factor(
       cut(C008, c(breaks = quantile(C008, 
-                                    probs = seq(0, 1, 1/4), 
+                                    probs = seq(0, 1, 1/3), 
                                     na.rm = TRUE)), # variável idade por quartil
-          labels = c("low", "middle_low", "middle_high", "high"), 
+          labels = c("young", "middle", "old"), 
           right = FALSE, 
-          include.lowest = TRUE)),
+          include.lowest = TRUE)), 
     gender = factor(case_when( 
       C006 == "Homem" ~ "male",
       C006 == "Mulher" ~ "female"),
@@ -64,22 +67,26 @@ pns19 <- raw_19 |>
     education = factor(case_when(
       VDD004A %in% c("Sem instrução", "Fundamental incompleto ou equivalente") ~ "elow",
       VDD004A %in% c("Fundamental completo ou equivalente", 
-                     "Médio incompleto ou equivalente") ~ "emiddle_low",
-      VDD004A == "Médio completo ou equivalente" ~ "emiddle_high",
+                     "Médio incompleto ou equivalente") ~ "emidlow",
+      VDD004A == "Médio completo ou equivalente" ~ "emidhigh",
       VDD004A %in% c("Superior incompleto ou equivalente", "Superior completo") ~ "ehigh"),
-      levels = c("elow", "emidlow", "emidhigh=", "ehigh")),
+      levels = c("elow", "emidlow", "emidhigh", "ehigh")),
     bmi = P00103/((P00403/100)^2), # variável IMC
-    obesity = factor(case_when(  
+    obesity = case_when(  
       bmi >= 30 ~ 1,
-      TRUE ~ 0), 
-      levels = c(0, 1)))  |>  # variável estado nutricional (obesidade = sim/não)
-  select(age, gender, race, income, education, bmi, obesity) # seleção das variáveis
+      TRUE ~ 0))  |>  # variável estado nutricional (obesidade = sim/não)
+  dplyr::select(age, gender, race, income, education, bmi, obesity) # seleção das variáveis
 
 pns19 <- drop_na(pns19) # --> 70452 obs. 
 
 # Criação de estratos sociais
 pns19 <- pns19  |> 
-  dplyr::mutate(stratum = paste(gender, race, income, education, sep = "")) |> 
+  dplyr::mutate(stratum = paste(age,
+                                gender, 
+                                race, 
+                                income, 
+                                education, 
+                                sep = "")) |> 
   dplyr::mutate(stratum = factor(stratum)) |> 
   dplyr::mutate(id = row_number()) |> 
   dplyr::group_by(stratum) |> 
@@ -103,9 +110,8 @@ summary(modelo1A)
 pns19$m1Am <- predict(modelo1A)
 
 # Modelo 1B | Regressão linear com dois níveis sem covariáveis#### 
-modelo1B <- lmer(bmi ~ gender + race + income + education + (1|stratum), 
+modelo1B <- lmer(bmi ~ age + gender + race + income + education + (1|stratum), 
                 data=pns19)
-
 # Predição
 m1Bm <- predictInterval(modelo1B, 
                          level=0.95, 
@@ -127,7 +133,7 @@ pns19$m2Axbu <- predict(modelo2A, type="response")
 pns19$m2Axb <- predict(modelo2A, type="response", re.form=NA)
 
 # Modelo 2B | Regressão logística com dois níveis com covariáveis#### 
-modelo2B <- glmer(obesity ~ gender + race + income + education +
+modelo2B <- glmer(obesity ~ age + gender + race + income + education + 
                    (1|stratum), 
                  data=pns19, 
                  family=binomial)
@@ -139,6 +145,7 @@ tab_model(modelo2B, show.se=T)
 m2Bm <- predictInterval(modelo2B, 
                          level=0.95, 
                          include.resid.var=FALSE)
+
 m2Bm <- mutate(m2Bm, id=row_number())
 
 pns19$m2BmF <- predict(modelo2B, re.form=NA)
@@ -178,7 +185,8 @@ pns2 <- pns19  |>
 
 # Colapsar tudo 
 estrato <- pns2 |> 
-  group_by (gender,
+  group_by (age,
+            gender,
             race,
             income,
             education,
@@ -206,7 +214,7 @@ estrato <- estrato |>
 
 # Ranking 
 estrato <- estrato  |> 
-  dplyr::mutate(rank1 = rank(m1Bmfit))
+  dplyr::mutate(rank = rank(m1Bmfit))
 
 ggplot(estrato, aes(y=m1Bmfit, x=rank)) +
   geom_point() +
@@ -224,5 +232,38 @@ ggplot(estrato, aes(y = m1Bmfit, x = rank, color = stratum)) +
   labs(color = "Stratum") +
   theme(legend.position = "none")
 
+# Tabela 3 #### 
+tab_model(modelo1A, 
+          modelo1B, 
+          modelo2A, 
+          modelo2B,
+          p.style="stars")
 
+# VPC### 
+vc1a <-as.data.frame(VarCorr(modelo1A))
+vc1b <-as.data.frame(VarCorr(modelo1B))
+vc2a <-as.data.frame(VarCorr(modelo2A))
+vc2b <-as.data.frame(VarCorr(modelo2B))
+
+PCV1 <- ((vc1a[1,4] - vc1b[1,4]) / vc1a[1,4])*100
+PCV1
+PCV2 <- ((vc2a[1,4] - vc2b[1,4]) / vc2a[1,4])*100
+PCV2
+
+# AUC###
+AUC2A <- auc(pns2$obesity, pns2$m2Axbu)
+
+AUC2AF <- auc(pns2$obesity, pns2$m2Axb)
+
+AUC2B <- auc(pns2$obesity, pns2$m2Bmfit)
+AUC2BF <- auc(pns2$obesity, pns2$m2Bxb)
+
+estrato$n100plus <- ifelse(estrato$strata_n>=100, 1,0)
+estrato$n50plus <- ifelse(estrato$strata_n>=50, 1,0)
+estrato$n30plus <- ifelse(estrato$strata_n>=30, 1,0)
+estrato$n20plus <- ifelse(estrato$strata_n>=20, 1,0)
+estrato$n10plus <- ifelse(estrato$strata_n>=10, 1,0)
+estrato$nlessthan10 <- ifelse(estrato$strata_n<10, 1,0)
   
+table(estrato$nlessthan10)
+
