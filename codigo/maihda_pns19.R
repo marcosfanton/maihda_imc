@@ -44,8 +44,8 @@ pns19 <- raw_19 |>
     age = factor(
       cut(C008, c(breaks = quantile(C008, 
                                     probs = seq(0, 1, 1/3), 
-                                    na.rm = TRUE)), # variável idade por quartil
-          labels = c("young", "middle", "old"), 
+                                    na.rm = TRUE)), # variável idade por tercil
+          labels = c("young", "mid", "old"), 
           right = FALSE, 
           include.lowest = TRUE)), 
     gender = factor(case_when( 
@@ -59,23 +59,24 @@ pns19 <- raw_19 |>
       levels = c("white", "black", "brown")), # variável raça/etnia
     income = factor(
       cut(VDF003, c(breaks = quantile(VDF003, 
-                                      probs = seq(0, 1, 1/4), 
+                                      probs = seq(0, 1, 1/3), 
                                       na.rm = TRUE)), 
-          labels = c("ilow", "imidlow", "imidhigh", "ihigh"), # variável renda por tercil
+          labels = c("ilow", "imid", "ihigh"), # variável renda por tercil
           right = FALSE, 
           include.lowest = TRUE)),
     education = factor(case_when(
-      VDD004A %in% c("Sem instrução", "Fundamental incompleto ou equivalente") ~ "elow",
-      VDD004A %in% c("Fundamental completo ou equivalente", 
-                     "Médio incompleto ou equivalente") ~ "emidlow",
-      VDD004A == "Médio completo ou equivalente" ~ "emidhigh",
+      VDD004A %in% c("Sem instrução", 
+                     "Fundamental incompleto ou equivalente",
+                     "Fundamental completo ou equivalente") ~ "elow",
+      VDD004A %in% c("Médio incompleto ou equivalente", 
+                     "Médio completo ou equivalente") ~ "emid",
       VDD004A %in% c("Superior incompleto ou equivalente", "Superior completo") ~ "ehigh"),
-      levels = c("elow", "emidlow", "emidhigh", "ehigh")),
+      levels = c("elow", "emid", "ehigh")), # variável educação por tercil
     bmi = P00103/((P00403/100)^2), # variável IMC
     obesity = case_when(  
       bmi >= 30 ~ 1,
       TRUE ~ 0))  |>  # variável estado nutricional (obesidade = sim/não)
-  dplyr::select(age, gender, race, income, education, bmi, obesity) # seleção das variáveis
+  dplyr::select(C008, age, gender, race, income, education, bmi, obesity) # seleção das variáveis
 
 pns19 <- drop_na(pns19) # --> 70452 obs. 
 
@@ -93,8 +94,8 @@ pns19 <- pns19  |>
   dplyr::mutate(strata_n = n())
 
 # Salvar banco
-write.csv(pns19, 
-          "dados/pns19.csv", 
+write.csv(estrato, 
+          "dados/estratos.csv", 
           row.names = FALSE)
 
 # Carregar banco
@@ -105,7 +106,6 @@ pns19 <- read.csv("dados/pns19.csv")
 # Modelo 1A | Regressão linear com dois níveis com covariáveis#### 
 modelo1A <- lmer(bmi ~ (1|stratum), 
                 data=pns19)
-summary(modelo1A)
 # Predição 
 pns19$m1Am <- predict(modelo1A)
 
@@ -214,7 +214,7 @@ estrato <- estrato |>
 
 # Ranking 
 estrato <- estrato  |> 
-  dplyr::mutate(rank = rank(m1Bmfit))
+  dplyr::mutate(rank = rank(m2Bmfit))
 
 ggplot(estrato, aes(y=m1Bmfit, x=rank)) +
   geom_point() +
@@ -223,9 +223,9 @@ ggplot(estrato, aes(y=m1Bmfit, x=rank)) +
   xlab("Stratum Rank") + 
   theme_bw()
 
-ggplot(estrato, aes(y = m1Bmfit, x = rank, color = stratum)) +
+ggplot(estrato, aes(y = m2Bmfit, x = rank, color = stratum)) +
   geom_point() +
-  geom_pointrange(aes(ymin = m1Bmlwr, ymax = m1Bmupr)) +
+  geom_pointrange(aes(ymin = m2Bmlwr, ymax = m2Bmupr)) +
   ylab("Predicted BMI, Model 1B") +
   xlab("Stratum Rank") + 
   theme_bw() +
