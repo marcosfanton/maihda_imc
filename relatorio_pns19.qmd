@@ -1,26 +1,135 @@
 ---
 title: "relatorio_pns19"
+author: "Marcos"
 format: html
 editor: visual
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+Tabela Descritiva - PNS19
 
 ```{r}
-1 + 1
+library(tidyverse)
+library(gtsummary)
+
+raw_19 <- read.csv("dados/raw/raw_19.csv")
+
+pns19_1 <- raw_19 |>
+  dplyr::filter(C008 >= 18)  |>  # maiores de 18 anos
+  dplyr::filter(C009 != "Ignorado")  |>  # exclusão de "Ignorados" da variável raça
+  dplyr::filter(P00102 == "Sim" & P00402 == "Sim")  |>  # sabe o peso & a altura
+  dplyr::filter(P005 != "Sim"| is.na(P005))  |> 
+  select(C008, C006, C009, VDF003, VDD004A, P00103, P00403) 
+
+colnames(pns19_1) <- c("idade",
+                     "genero",
+                     "raca",
+                     "renda",
+                     "educacao",
+                     "peso",
+                     "altura")
+
+pns19_1 |> 
+  tbl_summary(
+    type = all_continuous() ~ "continuous2", 
+    statistic = all_continuous () ~ c(
+      "{mean} ({sd})", 
+      "{median} ({p25}, {p75})",
+      "{min} - {max}")
+    )
+
+pns19_1 <- pns19_1 |> mutate(
+ bmi = peso/((altura/100)^2), # variável IMC
+    obesity = case_when(  
+      bmi >= 30 ~ 1,
+      TRUE ~ 0)) 
+
+pns19_1 |> 
+  tbl_summary( 
+    by = obesity,
+    type = all_continuous() ~ "continuous2", 
+    statistic = all_continuous () ~ c(
+      "{mean} ({sd})", 
+      "{median} ({p25}, {p75})",
+      "{min} - {max}")
+    )
 ```
 
-You can add options to executable code like this
+Tabela 2 - Proposta 1 — 54 estratos
+
+Gênero :: Homem-Mulher
+
+Raça :: Branca - Preta - Parda
+
+Renda per capita :: Baixa (0-625) - Média (626-1300) - Alta (1301 - 203196)
+
+Educação :: Baixa (Sem Instrução - Fundamental completo) - Média (Ensino Médio in- e completo) - Alta (Superior incompleto)
 
 ```{r}
-#| echo: false
-2 * 2
+
+pns19_2 <- raw_19 |>
+  dplyr::filter(C008 >= 18)  |>  # maiores de 18 anos
+  dplyr::filter(C009 != "Ignorado")  |>  # exclusão de "Ignorados" da variável raça
+  dplyr::filter(P00102 == "Sim" & P00402 == "Sim")  |>  # sabe o peso & a altura
+  dplyr::filter(P005 != "Sim"| is.na(P005))  |>  # exclusão de mulheres grávidas
+  dplyr::mutate(
+    age = factor(
+      cut(C008, c(breaks = quantile(C008, 
+                                    probs = seq(0, 1, 1/3), 
+                                    na.rm = TRUE)), # variável idade por tercil
+          labels = c("young", "mid", "old"), 
+          right = FALSE, 
+          include.lowest = TRUE)), 
+    gender = factor(case_when( 
+      C006 == "Homem" ~ "male",
+      C006 == "Mulher" ~ "female"),
+      levels = c("male", "female")), # variável gênero
+    race = factor(case_when(
+      C009 == "Branca" ~ "white",
+      C009 == "Preta" ~ "black",
+      C009 == "Parda" ~ "brown"),
+      levels = c("white", "black", "brown")), # variável raça/etnia
+    income = factor(
+      cut(VDF003, c(breaks = quantile(VDF003, 
+                                      probs = seq(0, 1, 1/3), 
+                                      na.rm = TRUE)), 
+          labels = c("ilow", "imid", "ihigh"), # variável renda por tercil
+          right = FALSE, 
+          include.lowest = TRUE)),
+    education = factor(case_when(
+      VDD004A %in% c("Sem instrução", 
+                     "Fundamental incompleto ou equivalente",
+                     "Fundamental completo ou equivalente") ~ "elow",
+      VDD004A %in% c("Médio incompleto ou equivalente", 
+                     "Médio completo ou equivalente") ~ "emid",
+      VDD004A %in% c("Superior incompleto ou equivalente", "Superior completo") ~ "ehigh"),
+      levels = c("elow", "emid", "ehigh")), # variável educação por tercil
+    bmi = P00103/((P00403/100)^2), # variável IMC
+    obesity = case_when(  
+      bmi >= 30 ~ 1,
+      TRUE ~ 0))  |>  # variável estado nutricional (obesidade = sim/não)
+  dplyr::select(age, gender, race, income, education, bmi, obesity) # seleção das variáveis
+
+pns19_2 <- drop_na(pns19_2) # --> 70452 obs. 
+
+pns19_2 |> 
+  tbl_summary()
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+Descrição dos Estratos
+
+```{r}
+pns19_2 <- pns19_2  |> 
+  dplyr::mutate(stratum = paste(gender, 
+                                race, 
+                                income, 
+                                education, 
+                                sep = "")) |> 
+  dplyr::mutate(stratum = factor(stratum)) |> 
+  dplyr::mutate(id = row_number()) |> 
+  dplyr::group_by(stratum) |> 
+  dplyr::mutate(strata_n = n())
+
+pns19_2 |> 
+  select(stratum, strata_n) |> 
+  tbl_summary()
+```
